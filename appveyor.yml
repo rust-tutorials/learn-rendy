@@ -1,0 +1,31 @@
+cache:
+  - C:\projects\learn-gfx-hal\target\ -> appveyor.yml
+
+os: Visual Studio 2015
+
+environment:
+  matrix:
+    # MSVC, only bother to verify stable
+    - channel: stable
+      target: x86_64-pc-windows-msvc
+    - channel: stable
+      target: i686-pc-windows-msvc
+    # GNU is not supported by shaderc-rs :(
+
+install:
+  - appveyor DownloadFile https://win.rustup.rs/ -FileName rustup-init.exe
+  - rustup-init -y --default-toolchain %channel% --default-host %target%
+  - set PATH=%PATH%;%USERPROFILE%\.cargo\bin
+  # https://www.appveyor.com/docs/windows-images-software/
+  # Apparently cmake is already installed
+  # We just pick a version of python to place in the PATH
+  - set PATH=%PATH%;C:\Python26-x64
+  - rustc -vV
+  - cargo -vV
+
+# On advice of reptep we skip the "build" script phase
+build: false
+
+test_script:
+  - cargo build --examples --features="vulkan"
+  - cargo build --examples --features="dx12"

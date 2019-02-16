@@ -1,0 +1,44 @@
+# The shaderc dependencies are already installed on the base images
+# so we dont need to worry about installing them.
+dist: xenial
+os:
+  - linux
+  - osx
+  #- windows # Waiting on https://travis-ci.community/t/timeout-before-install-step/1502/3
+language: rust
+rust:
+  - stable
+cache:
+  cargo
+
+before_script:
+  - |
+    if [[ $TRAVIS_OS_NAME == "linux" ]]; then \
+      (test -x $HOME/.cargo/bin/cargo-install-update || cargo install cargo-update) && \
+      (test -x $HOME/.cargo/bin/mdbook || cargo install mdbook) && \
+      cargo install-update -a; \
+    fi
+
+script:
+  - |
+    if [[ $TRAVIS_OS_NAME == "linux" ]]; then \
+      travis_wait cargo build --examples --features="vulkan" && \
+      cd book && \
+      mdbook build; \
+    fi
+  - |
+    if [[ $TRAVIS_OS_NAME == "osx" ]]; then \
+      travis_wait cargo build --examples --features="metal";
+    fi
+
+deploy:
+  provider: pages
+  local-dir: target/book-output
+  skip-cleanup: true
+  github-token: $GITHUB_TOKEN
+  keep-history: false
+  name: DocsBot
+  verbose: true
+  on:
+    branch: master
+    condition: $TRAVIS_OS_NAME = linux

@@ -1,0 +1,7 @@
+[book]
+title = "learn-rendy"
+authors = ["Gray Olson"]
+
+[build]
+build-dir = "../target/book-output"
+create-missing = true
