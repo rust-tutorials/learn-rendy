@@ -31,5 +31,6 @@ gfx-hal = "0.1"
 
 [dependencies.rendy]
 optional = true
-git = "https://github.com/omni-viral/rendy"
-rev = "fd14b6e6c6ffbfb5c814ced92fe6826cdd249499"
+# path = "../rendy/rendy"
+git = "https://github.com/termhn/rendy"
+rev = "aa19aa400e7631b5b27883efc8f9890bd61b811f"
