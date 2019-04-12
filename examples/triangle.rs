@@ -6,11 +6,19 @@
 use rendy::{
     command::{Families, QueueId, RenderPassEncoder},
     factory::{Config, Factory},
-    graph::{present::PresentNode, render::*, Graph, GraphBuilder, NodeBuffer, NodeImage},
+    graph::{present::PresentNode, render::*, Graph, GraphBuilder, GraphContext, NodeBuffer, NodeImage},
     memory::MemoryUsageValue,
     mesh::{AsVertex, PosColor},
-    resource::buffer::Buffer,
+    resource::Buffer,
     shader::{Shader, ShaderKind, SourceLanguage, StaticShaderInfo},
+};
+
+use rendy::{
+    graph::{
+        render::*
+    },
+    memory::Dynamic,
+    resource::{BufferInfo, DescriptorSetLayout, Escape, Handle}
 };
 
 use winit::{EventsLoop, WindowBuilder, Event, WindowEvent};
@@ -125,7 +133,7 @@ struct TriangleRenderPipelineDesc;
 
 #[derive(Debug)]
 struct TriangleRenderPipeline<B: gfx_hal::Backend> {
-    vertex: Buffer<B>,
+    vertex: Escape<Buffer<B>>,
 }
 
 impl<B, T> SimpleGraphicsPipelineDesc<B, T> for TriangleRenderPipelineDesc
@@ -153,15 +161,17 @@ where
         &self,
         storage: &'a mut Vec<B::ShaderModule>,
         factory: &mut Factory<B>,
-        _aux: &mut T,
+        _aux: &T,
     ) -> gfx_hal::pso::GraphicsShaderSet<'a, B> {
         storage.clear();
 
-        log::trace!("Load shader module '{:#?}'", *VERTEX);
-        storage.push(VERTEX.module(factory).unwrap());
+        unsafe {
+            log::trace!("Load shader module '{:#?}'", *VERTEX);
+            storage.push(VERTEX.module(factory).unwrap());
 
-        log::trace!("Load shader module '{:#?}'", *FRAGMENT);
-        storage.push(FRAGMENT.module(factory).unwrap());
+            log::trace!("Load shader module '{:#?}'", *FRAGMENT);
+            storage.push(FRAGMENT.module(factory).unwrap());
+        }
 
         gfx_hal::pso::GraphicsShaderSet {
             vertex: gfx_hal::pso::EntryPoint {
@@ -182,12 +192,13 @@ where
 
     fn build<'a>(
         self,
+        _ctx: &GraphContext<B>,
         factory: &mut Factory<B>,
-        _queue: QueueId,
-        _aux: &mut T,
-        buffers: Vec<NodeBuffer<'a, B>>,
-        images: Vec<NodeImage<'a, B>>,
-        set_layouts: &[B::DescriptorSetLayout],
+        queue: QueueId,
+        aux: &T,
+        buffers: Vec<NodeBuffer>,
+        images: Vec<NodeImage>,
+        set_layouts: &[Handle<DescriptorSetLayout<B>>],
     ) -> Result<TriangleRenderPipeline<B>, failure::Error> {
         assert!(buffers.is_empty());
         assert!(images.is_empty());
@@ -195,11 +206,12 @@ where
 
         let mut vbuf = factory
             .create_buffer(
-                512,
-                PosColor::VERTEX.stride as u64 * 3,
-                (gfx_hal::buffer::Usage::VERTEX, MemoryUsageValue::Dynamic),
-            )
-            .unwrap();
+                BufferInfo {
+                        size: PosColor::VERTEX.stride as u64 * 3,
+                        usage: gfx_hal::buffer::Usage::VERTEX,
+                },
+                Dynamic,
+            ).unwrap();
 
         unsafe {
             factory
@@ -237,11 +249,11 @@ where
 
     fn prepare(
         &mut self,
-        _factory: &Factory<B>,
+        factory: &Factory<B>,
         _queue: QueueId,
-        _set_layouts: &[B::DescriptorSetLayout],
-        _index: usize,
-        _aux: &T,
+        _set_layouts: &[Handle<DescriptorSetLayout<B>>],
+        index: usize,
+        aux: &T,
     ) -> PrepareResult {
         PrepareResult::DrawReuse
     }
@@ -257,5 +269,5 @@ where
         encoder.draw(0..3, 0..1);
     }
 
-    fn dispose(self, _factory: &mut Factory<B>, _aux: &mut T) {}
+    fn dispose(self, _factory: &mut Factory<B>, _aux: &T) {}
 }
