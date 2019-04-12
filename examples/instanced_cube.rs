@@ -6,7 +6,7 @@
 use rendy::{
     command::{DrawIndexedCommand, QueueId, RenderPassEncoder},
     factory::{Config, Factory, ImageState},
-    graph::{present::PresentNode, render::*, GraphBuilder, NodeBuffer, NodeImage, GraphContext},
+    graph::{present::PresentNode, render::*, GraphBuilder, GraphContext, NodeBuffer, NodeImage},
     hal::{pso::DescriptorPool, Device},
     memory::MemoryUsageValue,
     mesh::{AsVertex, Mesh, PosNormTex, Transform},
@@ -16,25 +16,23 @@ use rendy::{
 };
 
 use rendy::{
-    command::{Families},
-    graph::{
-        render::*, Graph
-    },
+    command::Families,
+    graph::{render::*, Graph},
     memory::Dynamic,
-    mesh::{PosColor},
-    resource::{BufferInfo, DescriptorSetLayout, Escape, Handle}
+    mesh::PosColor,
+    resource::{BufferInfo, DescriptorSetLayout, Escape, Handle},
 };
 
-use std::{mem::size_of, time};
-use std::marker::PhantomData;
 use genmesh::{
     generators::{IndexedPolygon, SharedVertex},
     Triangulate,
 };
+use std::marker::PhantomData;
+use std::{mem::size_of, time};
 
 use rand::distributions::{Distribution, Uniform};
 
-use winit::{EventsLoop, WindowBuilder, Event, WindowEvent};
+use winit::{Event, EventsLoop, WindowBuilder, WindowEvent};
 
 #[cfg(feature = "dx12")]
 type Backend = rendy::dx12::Backend;
@@ -123,7 +121,7 @@ struct MeshRenderPipeline<B: gfx_hal::Backend> {
 
 impl<B> SimpleGraphicsPipelineDesc<B, Aux<B>> for MeshRenderPipelineDesc
 where
-    B: gfx_hal::Backend
+    B: gfx_hal::Backend,
 {
     type Pipeline = MeshRenderPipeline<B>;
 
@@ -243,13 +241,14 @@ where
         let buffer = factory
             .create_buffer(
                 BufferInfo {
-                        size: buffer_frame_size(aux.align) * frames as u64,
-                        usage: gfx_hal::buffer::Usage::VERTEX | gfx_hal::buffer::Usage::UNIFORM | gfx_hal::buffer::Usage::INDIRECT,
+                    size: buffer_frame_size(aux.align) * frames as u64,
+                    usage: gfx_hal::buffer::Usage::VERTEX
+                        | gfx_hal::buffer::Usage::UNIFORM
+                        | gfx_hal::buffer::Usage::INDIRECT,
                 },
                 Dynamic,
             )
             .unwrap();
-
 
         let cube = genmesh::generators::Cube::new();
         let cube_indices: Vec<_> =
@@ -308,7 +307,7 @@ where
                     queue,
                     stage: gfx_hal::pso::PipelineStage::FRAGMENT_SHADER,
                     access: gfx_hal::image::Access::SHADER_READ,
-                    layout: gfx_hal::image::Layout::ShaderReadOnlyOptimal
+                    layout: gfx_hal::image::Layout::ShaderReadOnlyOptimal,
                 },
                 factory,
             )
@@ -326,7 +325,8 @@ where
                         array_offset: 0,
                         descriptors: Some(gfx_hal::pso::Descriptor::Buffer(
                             buffer.raw(),
-                            Some(uniform_offset(index, aux.align))..Some(uniform_offset(index, aux.align) + UNIFORM_SIZE),
+                            Some(uniform_offset(index, aux.align))
+                                ..Some(uniform_offset(index, aux.align) + UNIFORM_SIZE),
                         )),
                     },
                     gfx_hal::pso::DescriptorSetWrite {
@@ -363,7 +363,7 @@ where
 
 impl<B> SimpleGraphicsPipeline<B, Aux<B>> for MeshRenderPipeline<B>
 where
-    B: gfx_hal::Backend
+    B: gfx_hal::Backend,
 {
     type Desc = MeshRenderPipelineDesc;
 
@@ -452,8 +452,7 @@ where
 
     fn dispose(mut self, factory: &mut Factory<B>, _aux: &Aux<B>) {
         unsafe {
-            self.descriptor_pool
-                .free_sets(self.sets.into_iter());
+            self.descriptor_pool.free_sets(self.sets.into_iter());
             factory.destroy_descriptor_pool(self.descriptor_pool);
         }
     }
@@ -512,8 +511,8 @@ fn main() {
             .into_pass(),
     );
 
-    let present_builder = PresentNode::builder(surface, factory.physical(), color)
-        .with_dependency(pass);
+    let present_builder =
+        PresentNode::builder(surface, factory.physical(), color).with_dependency(pass);
 
     let frames = present_builder.image_count() as usize;
 
@@ -555,7 +554,10 @@ fn main() {
         for _ in &mut frames {
             factory.maintain(&mut families);
             event_loop.poll_events(|event| match event {
-                Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => should_close = true,
+                Event::WindowEvent {
+                    event: WindowEvent::CloseRequested,
+                    ..
+                } => should_close = true,
                 _ => (),
             });
             graph.run(&mut factory, &mut families, &mut aux);
@@ -574,10 +576,16 @@ fn main() {
                 })
             }
 
-            if should_close || elapsed > std::time::Duration::new(5, 0) || aux.scene.objects.len() == MAX_OBJECTS {
+            if should_close
+                || elapsed > std::time::Duration::new(5, 0)
+                || aux.scene.objects.len() == MAX_OBJECTS
+            {
                 let frames = frames.start - start;
                 let nanos = elapsed.as_secs() * 1_000_000_000 + elapsed.subsec_nanos() as u64;
-                fpss.push((frames * 1_000_000_000 / nanos, from..aux.scene.objects.len()));
+                fpss.push((
+                    frames * 1_000_000_000 / nanos,
+                    from..aux.scene.objects.len(),
+                ));
                 checkpoint += elapsed;
                 break;
             }

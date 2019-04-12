@@ -6,7 +6,9 @@
 use rendy::{
     command::{Families, QueueId, RenderPassEncoder},
     factory::{Config, Factory},
-    graph::{present::PresentNode, render::*, Graph, GraphBuilder, GraphContext, NodeBuffer, NodeImage},
+    graph::{
+        present::PresentNode, render::*, Graph, GraphBuilder, GraphContext, NodeBuffer, NodeImage,
+    },
     memory::MemoryUsageValue,
     mesh::{AsVertex, PosColor},
     resource::Buffer,
@@ -14,14 +16,12 @@ use rendy::{
 };
 
 use rendy::{
-    graph::{
-        render::*
-    },
+    graph::render::*,
     memory::Dynamic,
-    resource::{BufferInfo, DescriptorSetLayout, Escape, Handle}
+    resource::{BufferInfo, DescriptorSetLayout, Escape, Handle},
 };
 
-use winit::{EventsLoop, WindowBuilder, Event, WindowEvent};
+use winit::{Event, EventsLoop, WindowBuilder, WindowEvent};
 
 #[cfg(feature = "dx12")]
 type Backend = rendy::dx12::Backend;
@@ -89,7 +89,8 @@ fn main() {
             .into_pass(),
     );
 
-    graph_builder.add_node(PresentNode::builder(surface, factory.physical(), color).with_dependency(pass));
+    graph_builder
+        .add_node(PresentNode::builder(surface, factory.physical(), color).with_dependency(pass));
 
     let graph = graph_builder
         .build(&mut factory, &mut families, &mut ())
@@ -115,7 +116,10 @@ fn run(
 
         let mut should_close = false;
         event_loop.poll_events(|event| match event {
-            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => should_close = true,
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => should_close = true,
             _ => (),
         });
         if should_close {
@@ -207,11 +211,12 @@ where
         let mut vbuf = factory
             .create_buffer(
                 BufferInfo {
-                        size: PosColor::VERTEX.stride as u64 * 3,
-                        usage: gfx_hal::buffer::Usage::VERTEX,
+                    size: PosColor::VERTEX.stride as u64 * 3,
+                    usage: gfx_hal::buffer::Usage::VERTEX,
                 },
                 Dynamic,
-            ).unwrap();
+            )
+            .unwrap();
 
         unsafe {
             factory
