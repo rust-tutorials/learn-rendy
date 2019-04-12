@@ -5,18 +5,28 @@
 
 use rendy::{
     command::{DrawIndexedCommand, QueueId, RenderPassEncoder},
-    factory::{Config, Factory},
-    graph::{present::PresentNode, render::*, GraphBuilder, NodeBuffer, NodeImage},
+    factory::{Config, Factory, ImageState},
+    graph::{present::PresentNode, render::*, GraphBuilder, NodeBuffer, NodeImage, GraphContext},
     hal::{pso::DescriptorPool, Device},
     memory::MemoryUsageValue,
     mesh::{AsVertex, Mesh, PosNormTex, Transform},
-    resource::buffer::Buffer,
+    resource::Buffer,
     shader::{Shader, ShaderKind, SourceLanguage, StaticShaderInfo},
     texture::{pixel::Rgba8Srgb, Texture, TextureBuilder},
 };
 
-use std::{mem::size_of, time};
+use rendy::{
+    command::{Families},
+    graph::{
+        render::*, Graph
+    },
+    memory::Dynamic,
+    mesh::{PosColor},
+    resource::{BufferInfo, DescriptorSetLayout, Escape, Handle}
+};
 
+use std::{mem::size_of, time};
+use std::marker::PhantomData;
 use genmesh::{
     generators::{IndexedPolygon, SharedVertex},
     Triangulate,
@@ -70,10 +80,11 @@ struct Scene {
     objects: Vec<nalgebra::Matrix4<f32>>,
 }
 
-struct Aux {
+struct Aux<B: gfx_hal::Backend> {
     frames: usize,
     align: u64,
     scene: Scene,
+    pd: PhantomData<B>,
 }
 
 const MAX_OBJECTS: usize = 20_000;
@@ -104,15 +115,15 @@ struct MeshRenderPipelineDesc;
 #[derive(Debug)]
 struct MeshRenderPipeline<B: gfx_hal::Backend> {
     descriptor_pool: B::DescriptorPool,
-    buffer: Buffer<B>,
+    buffer: Escape<Buffer<B>>,
     sets: Vec<B::DescriptorSet>,
     cube_mesh: Mesh<B>,
     cube_texture: Texture<B>,
 }
 
-impl<B> SimpleGraphicsPipelineDesc<B, Aux> for MeshRenderPipelineDesc
+impl<B> SimpleGraphicsPipelineDesc<B, Aux<B>> for MeshRenderPipelineDesc
 where
-    B: gfx_hal::Backend,
+    B: gfx_hal::Backend
 {
     type Pipeline = MeshRenderPipeline<B>;
 
@@ -164,16 +175,17 @@ where
         &self,
         storage: &'a mut Vec<B::ShaderModule>,
         factory: &mut Factory<B>,
-        _aux: &mut Aux,
+        _aux: &Aux<B>,
     ) -> gfx_hal::pso::GraphicsShaderSet<'a, B> {
         storage.clear();
 
-        log::trace!("Load shader module '{:#?}'", *VERTEX);
-        storage.push(VERTEX.module(factory).unwrap());
+        unsafe {
+            log::trace!("Load shader module '{:#?}'", *VERTEX);
+            storage.push(VERTEX.module(factory).unwrap());
 
-        log::trace!("Load shader module '{:#?}'", *FRAGMENT);
-        storage.push(FRAGMENT.module(factory).unwrap());
-
+            log::trace!("Load shader module '{:#?}'", *FRAGMENT);
+            storage.push(FRAGMENT.module(factory).unwrap());
+        }
         gfx_hal::pso::GraphicsShaderSet {
             vertex: gfx_hal::pso::EntryPoint {
                 entry: "main",
@@ -193,12 +205,13 @@ where
 
     fn build<'a>(
         self,
+        _ctx: &GraphContext<B>,
         factory: &mut Factory<B>,
         queue: QueueId,
-        aux: &mut Aux,
-        buffers: Vec<NodeBuffer<'a, B>>,
-        images: Vec<NodeImage<'a, B>>,
-        set_layouts: &[B::DescriptorSetLayout],
+        aux: &Aux<B>,
+        buffers: Vec<NodeBuffer>,
+        images: Vec<NodeImage>,
+        set_layouts: &[Handle<DescriptorSetLayout<B>>],
     ) -> Result<MeshRenderPipeline<B>, failure::Error> {
         assert!(buffers.is_empty());
         assert!(images.is_empty());
@@ -229,16 +242,14 @@ where
 
         let buffer = factory
             .create_buffer(
-                aux.align,
-                buffer_frame_size(aux.align) * frames as u64,
-                (
-                    gfx_hal::buffer::Usage::UNIFORM
-                        | gfx_hal::buffer::Usage::INDIRECT
-                        | gfx_hal::buffer::Usage::VERTEX,
-                    MemoryUsageValue::Dynamic,
-                ),
+                BufferInfo {
+                        size: buffer_frame_size(aux.align) * frames as u64,
+                        usage: gfx_hal::buffer::Usage::VERTEX | gfx_hal::buffer::Usage::UNIFORM | gfx_hal::buffer::Usage::INDIRECT,
+                },
+                Dynamic,
             )
             .unwrap();
+
 
         let cube = genmesh::generators::Cube::new();
         let cube_indices: Vec<_> =
@@ -266,7 +277,7 @@ where
             })
             .collect();
 
-        let cube_mesh = Mesh::<Backend>::builder()
+        let cube_mesh = Mesh::<B>::builder()
             .with_indices(&cube_indices[..])
             .with_vertices(&cube_vertices[..])
             .build(queue, factory)
@@ -293,9 +304,12 @@ where
 
         let cube_texture = cube_tex_builder
             .build(
-                queue,
-                gfx_hal::image::Access::SHADER_READ,
-                gfx_hal::image::Layout::ShaderReadOnlyOptimal,
+                ImageState {
+                    queue,
+                    stage: gfx_hal::pso::PipelineStage::FRAGMENT_SHADER,
+                    access: gfx_hal::image::Access::SHADER_READ,
+                    layout: gfx_hal::image::Layout::ShaderReadOnlyOptimal
+                },
                 factory,
             )
             .unwrap();
@@ -304,7 +318,7 @@ where
 
         for index in 0..frames {
             unsafe {
-                let set = descriptor_pool.allocate_set(&set_layouts[0]).unwrap();
+                let set = descriptor_pool.allocate_set(&set_layouts[0].raw()).unwrap();
                 factory.write_descriptor_sets(vec![
                     gfx_hal::pso::DescriptorSetWrite {
                         set: &set,
@@ -320,7 +334,7 @@ where
                         binding: 1,
                         array_offset: 0,
                         descriptors: Some(gfx_hal::pso::Descriptor::Image(
-                            cube_texture.image_view.raw(),
+                            cube_texture.view().raw(),
                             gfx_hal::image::Layout::ShaderReadOnlyOptimal,
                         )),
                     },
@@ -329,7 +343,7 @@ where
                         binding: 2,
                         array_offset: 0,
                         descriptors: Some(gfx_hal::pso::Descriptor::Sampler(
-                            cube_texture.sampler.raw(),
+                            cube_texture.sampler().raw(),
                         )),
                     },
                 ]);
@@ -347,9 +361,9 @@ where
     }
 }
 
-impl<B> SimpleGraphicsPipeline<B, Aux> for MeshRenderPipeline<B>
+impl<B> SimpleGraphicsPipeline<B, Aux<B>> for MeshRenderPipeline<B>
 where
-    B: gfx_hal::Backend,
+    B: gfx_hal::Backend
 {
     type Desc = MeshRenderPipelineDesc;
 
@@ -357,9 +371,9 @@ where
         &mut self,
         factory: &Factory<B>,
         _queue: QueueId,
-        _set_layouts: &[B::DescriptorSetLayout],
+        _set_layouts: &[Handle<DescriptorSetLayout<B>>],
         index: usize,
-        aux: &Aux,
+        aux: &Aux<B>,
     ) -> PrepareResult {
         unsafe {
             factory
@@ -412,7 +426,7 @@ where
         layout: &B::PipelineLayout,
         mut encoder: RenderPassEncoder<'_, B>,
         index: usize,
-        aux: &Aux,
+        aux: &Aux<B>,
     ) {
         encoder.bind_graphics_descriptor_sets(
             layout,
@@ -436,7 +450,7 @@ where
         );
     }
 
-    fn dispose(mut self, factory: &mut Factory<B>, _aux: &mut Aux) {
+    fn dispose(mut self, factory: &mut Factory<B>, _aux: &Aux<B>) {
         unsafe {
             self.descriptor_pool
                 .free_sets(self.sets.into_iter());
