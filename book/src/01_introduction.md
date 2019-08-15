@@ -31,8 +31,8 @@ commands, which is exactly what we want when using an api like `hal`.
 
 ### Transient resources
 
-In order to biuld that schedule, `rendy` manages what are called 'transient'
-resources. These are resourcs which are used within the process of rendering a
+In order to build that schedule, `rendy` manages what are called 'transient'
+resources. These are resources which are used within the process of rendering a
 frame, but which are not based directly on inputs from the application (like,
 for example, a texture or a model's vertex buffers) and which will not be
 directly displayed to the user (say, a framebuffer containing a swapchain
